@@ -1,0 +1,75 @@
+# GaLore Training Configuration for Qwen2-0.5B on 4GB VRAM
+# 支持一键切换: optimizer_type = "galore" | "adamw"
+
+# ==================== Model Configuration ====================
+model:
+  name: "./models_cache/qwen/Qwen2-0___5B-Instruct"
+  trust_remote_code: true
+  torch_dtype: "bfloat16"  # 主权重使用 bfloat16
+
+# ==================== Quantization Configuration ====================
+quantization:
+  enabled: true
+  load_in_8bit: true       # 8-bit 量化模型权重
+  llm_int8_threshold: 6.0
+  llm_int8_has_fp16_weight: false
+
+# ==================== Training Configuration ====================
+training:
+  output_dir: "./checkpoints/qwen2-0.5b-galore"
+  num_epochs: 3
+  max_length: 512          # 限制序列长度
+  batch_size: 1            # 必须设为1
+  gradient_accumulation_steps: 8  # 有效batch = 8
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 200
+  seed: 42
+
+# ==================== Memory Optimization ====================
+memory:
+  gradient_checkpointing: true   # 强制开启
+  enable_memory_profiling: true  # 显存监控
+  empty_cache_freq: 50           # 每50步清空缓存
+
+# ==================== Optimizer Selection ====================
+# 一键切换: "galore" | "adamw"
+optimizer:
+  type: "galore"           # 切换为 "adamw" 进行对照实验
+  
+  # AdamW settings (for baseline)
+  adamw:
+    lr: 2.0e-5
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    weight_decay: 0.01
+    eight_bit: true        # 8-bit AdamW
+  
+  # GaLore settings
+  galore:
+    lr: 2.0e-5
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    weight_decay: 0.01
+    rank: 128              # 低秩投影维度
+    update_proj_gap: 200   # 每200步更新投影矩阵
+    scale: 0.25            # 缩放因子
+    proj_type: "std"       # 投影类型: std | reverse_std | right | left
+    eight_bit: true        # 8-bit GaLore优化器状态
+
+# ==================== Data Configuration ====================
+data:
+  train_file: "./data/sample_data.json"
+  eval_split_ratio: 0.1
+  num_workers: 0           # Windows下建议设为0
+
+# ==================== Checkpoint Configuration ====================
+checkpoint:
+  auto_resume: true        # 自动检测最近checkpoint
+  save_total_limit: 3      # 最多保留3个checkpoint
+  save_optimizer: true     # 保存优化器状态
+  save_rng_state: true     # 保存随机种子

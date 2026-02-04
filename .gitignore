@@ -1,0 +1,73 @@
+# Instruction file (not for upload)
+instruction.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model weights and checkpoints (large files)
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Model cache
+models_cache/
+.cache/
+
+# Data (can be regenerated)
+data/sample_data.json
+!data/sample_data.json  # Keep a small sample
+
+# Logs and outputs
+*.log
+logs/
+outputs/
+wandb/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Memory reports (generated during training)
+memory_report_*.json
+
+# Temporary files
+*.tmp
+._____temp/

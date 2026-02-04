@@ -1,0 +1,76 @@
+{
+  "epoch": 2,
+  "step": 900,
+  "loss": 0.004521827719872818,
+  "config": {
+    "model": {
+      "name": "./models_cache/qwen/Qwen2-0___5B-Instruct",
+      "trust_remote_code": true,
+      "torch_dtype": "bfloat16"
+    },
+    "quantization": {
+      "enabled": true,
+      "load_in_8bit": true,
+      "llm_int8_threshold": 6.0,
+      "llm_int8_has_fp16_weight": false
+    },
+    "training": {
+      "output_dir": "./checkpoints/qwen2-0.5b-galore",
+      "num_epochs": 3,
+      "max_length": 512,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 8,
+      "learning_rate": 2e-05,
+      "weight_decay": 0.01,
+      "warmup_ratio": 0.03,
+      "max_grad_norm": 1.0,
+      "logging_steps": 10,
+      "eval_steps": 100,
+      "save_steps": 200,
+      "seed": 42
+    },
+    "memory": {
+      "gradient_checkpointing": true,
+      "enable_memory_profiling": true,
+      "empty_cache_freq": 50
+    },
+    "optimizer": {
+      "type": "galore",
+      "adamw": {
+        "lr": 2e-05,
+        "betas": [
+          0.9,
+          0.999
+        ],
+        "eps": 1e-08,
+        "weight_decay": 0.01,
+        "eight_bit": true
+      },
+      "galore": {
+        "lr": 2e-05,
+        "betas": [
+          0.9,
+          0.999
+        ],
+        "eps": 1e-08,
+        "weight_decay": 0.01,
+        "rank": 128,
+        "update_proj_gap": 200,
+        "scale": 0.25,
+        "proj_type": "std",
+        "eight_bit": true
+      }
+    },
+    "data": {
+      "train_file": "./data/sample_data.json",
+      "eval_split_ratio": 0.1,
+      "num_workers": 0
+    },
+    "checkpoint": {
+      "auto_resume": true,
+      "save_total_limit": 3,
+      "save_optimizer": true,
+      "save_rng_state": true
+    }
+  }
+}
