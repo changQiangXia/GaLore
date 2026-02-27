@@ -9,6 +9,7 @@ torchaudio
 transformers>=4.40.0
 accelerate>=0.27.0
 bitsandbytes>=0.43.0
+galore-torch>=1.0
 
 # Training utilities
 datasets>=2.14.0

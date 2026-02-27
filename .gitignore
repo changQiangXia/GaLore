@@ -41,6 +41,8 @@ env/
 
 # Model weights and checkpoints (large files)
 checkpoints/
+checkpoints_*/
+checkpoints-*/
 *.safetensors
 *.bin
 *.pt
@@ -52,14 +54,15 @@ models_cache/
 .cache/
 
 # Data (can be regenerated)
-data/sample_data.json
-!data/sample_data.json  # Keep a small sample
+data/*.json
+!data/sample_data.json
 
 # Logs and outputs
 *.log
 logs/
 outputs/
 wandb/
+results/
 
 # OS
 .DS_Store

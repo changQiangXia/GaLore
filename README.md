@@ -1,206 +1,185 @@
-# Qwen2-0.5B GaLore 全参数微调实验
+# Sophia&GaLore
 
-在 4GB 显存极限环境下，使用 GaLore（Gradient Low-Rank Projection）优化器完成 Qwen2-0.5B 模型的全参数微调。
+一个面向小显存环境的大模型微调项目，核心目标是在受限硬件下，系统验证 GaLore（Gradient Low-Rank Projection）在全参数训练中的可用性、稳定性和工程落地路径。
 
-## 🎯 实验目标
+## 项目定位
 
-验证在消费级 4GB 显卡上，使用 GaLore + 8-bit 量化 + Gradient Checkpointing 的组合，能否完成 0.5B 参数大语言模型的全参数微调。
+这个项目强调两件事：
 
-## 📁 项目结构
+1. 算法层面：低秩梯度投影在真实训练流程中的可执行实现
+2. 工程层面：在复杂依赖组合下，保证训练可跑、可恢复、可复现
 
-```
+项目不是只“跑通脚本”，而是对以下问题给出可复现实验答案：
+
+- 如何在有限显存下组织全参数微调流程
+- 如何让 GaLore 与量化、梯度检查点、断点恢复协同工作
+- 如何在不兼容配置下自动降级，避免训练中途崩溃
+
+## 算法创新点
+
+### 1. 形状安全的 GaLore Hook 回退实现
+
+对应文件：`models/galore_hook.py`
+
+- 在 backward hook 中完成低秩投影
+- 保证 hook 返回梯度与原梯度形状一致
+- 使用“投影到低秩子空间 + 投影回原空间”的策略兼容 autograd 约束
+
+这使得自定义 GaLore 路径在 PyTorch 训练循环中稳定可用。
+
+### 2. 兼容性感知的优化器路由策略
+
+对应文件：`train.py`
+
+- 自动识别 `8-bit + Linear8bitLt` 的高风险组合
+- 在不安全组合下跳过易崩溃路径
+- 在 GaLore 参数不可用时自动回退到稳定 AdamW 路径
+
+核心价值是把“容易踩坑的配置空间”变成“可预期的训练策略”。
+
+### 3. 量化配置的前置有效性检查
+
+对应文件：`models/model_loader.py`
+
+- 在训练前检查 int8 模块内部状态是否完整
+- 对不兼容配置直接早失败并给出可执行修复建议
+
+避免“启动很久后在深层调用栈崩溃”的低效调试模式。
+
+### 4. 梯度累积与断点续训的语义修正
+
+对应文件：`train.py`
+
+- 修正 micro-batch 与 optimizer-step 对齐逻辑
+- 修正中断恢复后 epoch 内跳步逻辑
+- 处理尾部不足累积窗口的梯度刷新
+
+保证中断前后训练行为一致，结果可比。
+
+### 5. 短任务场景下的显存报告兜底
+
+对应文件：`utils/memory_monitor.py`
+
+- 即使未命中日志步，也能输出非空 summary
+- 统一生成结构化 JSON 显存报告，便于实验对比
+
+## 训练模式说明
+
+项目支持两类实用模式：
+
+### A. 小显存稳定模式（默认更稳）
+
+- `quantization.enabled: true`
+- `load_in_8bit: true`
+- 多数情况下会走 AdamW 稳定路径
+
+适合快速验证流程和显存行为。
+
+### B. 真正 GaLore 模式（算法验证）
+
+- `quantization.enabled: false`
+- `optimizer.type: galore`
+
+适合验证纯 GaLore 优化行为和收敛特性。
+
+## 最新实验结果（本仓库实测）
+
+| 模式 | 输出目录 | 第 3 个 epoch 的 Eval Loss | 峰值 Allocated | 峰值 Reserved |
+|---|---|---:|---:|---:|
+| 8-bit 稳定路径（AdamW） | `checkpoints/qwen2-0.5b-galore-fullrun-20260227_093005` | 1.3806 | 1.192 GB | 3.029 GB |
+| 真 GaLore 路径 | `checkpoints/qwen2-0.5b-galore-fullrun-truegalore` | 1.2074 | 1.842 GB | 4.434 GB |
+
+结论（当前实现与环境）：
+
+- 真 GaLore 路径在该实验中取得更低的最终 eval loss
+- 真 GaLore 路径显存占用更高
+
+## 项目结构
+
+```text
 Sophia&GaLore/
-├── configs/
-│   └── galore_config.yaml      # 实验配置文件（支持一键切换优化器）
-├── data/
-│   ├── dataset.py              # 数据集加载与处理
-│   └── sample_data.json        # 示例指令数据
-├── models/
-│   ├── model_loader.py         # 模型加载与 8-bit 量化
-│   └── galore_hook.py          # GaLore 层级更新 Hook 核心实现
-├── utils/
-│   ├── memory_monitor.py       # 显存监控工具
-│   └── checkpoint.py           # 断点保存与恢复逻辑
-├── train.py                    # 训练主入口
-├── download_model_modelscope.py # 模型下载脚本
-├── requirements.txt            # 依赖清单
-└── README.md                   # 本文件
+- configs/
+  - galore_config.yaml
+  - galore_config.fullrun.yaml
+  - galore_compare_galore.yaml
+  - galore_compare_adamw.yaml
+- data/
+  - __init__.py
+  - dataset.py
+  - sample_data.json
+- models/
+  - __init__.py
+  - model_loader.py
+  - galore_hook.py
+- utils/
+  - __init__.py
+  - checkpoint.py
+  - memory_monitor.py
+- train.py
+- download_model.py
+- download_model_modelscope.py
+- requirements.txt
+- LICENSE
 ```
 
-## 🚀 快速开始
+## 快速开始
 
-### 1. 环境安装
+### 1) 环境准备
 
 ```bash
-# 创建虚拟环境
-conda create -n galore python=3.10
+conda create -n galore python=3.10 -y
 conda activate galore
-
-# 安装 PyTorch (CUDA 版本根据您的显卡调整)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# 安装项目依赖
 pip install -r requirements.txt
 ```
 
-### 2. 下载模型
+### 2) 下载模型
 
 ```bash
-# 使用 ModelScope（国内镜像，速度快）
+python download_model.py
+# 或
 python download_model_modelscope.py
 ```
 
-模型将下载到 `./models_cache/qwen/Qwen2-0___5B-Instruct/`
-
-### 3. 准备数据
+### 3) 生成示例数据
 
 ```bash
-# 生成示例指令数据（1000 条）
 python train.py --prepare-data
 ```
 
-### 4. 启动训练
+### 4) 启动训练
 
-**GaLore 优化器（显存优化）**
 ```bash
-python train.py --optimizer galore
+python train.py --config configs/galore_config.fullrun.yaml
 ```
 
-**AdamW 优化器（基线对照）**
+## 常用命令
+
+对照实验：
+
 ```bash
-python train.py --optimizer adamw
+python train.py --config configs/galore_compare_galore.yaml
+python train.py --config configs/galore_compare_adamw.yaml
 ```
 
-**断点续训**
+显式指定优化器：
+
 ```bash
-python train.py --resume
+python train.py --config configs/galore_config.yaml --optimizer galore
+python train.py --config configs/galore_config.yaml --optimizer adamw
 ```
 
-## 🔬 实验设计
+断点续训：
 
-### 核心优化技术栈
-
-| 技术 | 作用 | 实现位置 |
-|------|------|---------|
-| **8-bit 量化** | 模型权重压缩 50% | `models/model_loader.py` |
-| **Gradient Checkpointing** | 激活值重计算，节省 30-40% 显存 | `models/model_loader.py` |
-| **GaLore** | 梯度低秩投影，优化器状态压缩 | `models/galore_hook.py` |
-| **Layer-wise Hook** | 梯度即刻投影并释放 | `models/galore_hook.py` |
-
-### 关键配置参数
-
-```yaml
-# configs/galore_config.yaml
-training:
-  max_length: 512          # 限制序列长度
-  batch_size: 1            # 必须设为 1
-  gradient_accumulation_steps: 8  # 有效 batch = 8
-  
-quantization:
-  enabled: true
-  load_in_8bit: true       # 8-bit 模型权重
-
-optimizer:
-  type: "galore"           # 一键切换: "galore" | "adamw"
-  galore:
-    rank: 128              # 低秩投影维度
-    update_proj_gap: 200   # 每 200 步更新投影矩阵
-    scale: 0.25
+```bash
+python train.py --config configs/galore_config.yaml --resume
 ```
 
-## 📊 实验结果
+## 可复现性说明
 
-### 训练收敛情况
+- 随机种子由配置文件统一控制（`training.seed`）
+- checkpoint 保存模型、优化器、GaLore 状态和 RNG 状态
+- 显存报告以 JSON 输出，便于复现实验和对比分析
 
-| Epoch | GaLore Eval Loss | AdamW Eval Loss |
-|-------|-----------------|-----------------|
-| 0 | 0.200977 | 0.200977 |
-| 1 | 0.010484 | 0.010484 |
-| 2 | 0.004522 | 0.004522 |
-
-**收敛曲线完全一致**，Loss 从 0.20 降到 0.0045，降低了 **97.7%**。
-
-### 显存占用对比
-
-| 指标 | GaLore | AdamW | 结论 |
-|------|--------|-------|------|
-| 峰值显存占用 | ~3.5 GB | ~3.5 GB | 相同 |
-| 模型加载后 | ~0.97 GB | ~0.97 GB | 相同 |
-| 训练速度 | ~8 min/epoch | ~8 min/epoch | 相同 |
-
-### 关键发现
-
-1. **两者都能完成训练**：在 4GB 显存限制下，GaLore 和 8-bit AdamW 都成功完成了 3 个 epoch 的全参数微调。
-
-2. **显存占用几乎相同**：原因是：
-   - 模型较小（0.5B），优化器状态不是显存瓶颈
-   - 8-bit AdamW 已经把优化器状态压缩了 75%
-   - 模型权重（~0.5GB）和激活值（~2GB）占据了大部分显存
-
-3. **GaLore 的真正优势场景**：
-   - 更大模型（1B+）：AdamW 会 OOM，GaLore 能跑
-   - 更大 batch_size：GaLore 的梯度压缩优势更明显
-   - 更长序列长度：激活值占用增加，优化器状态占比相对提高
-
-## 🔍 核心代码解析
-
-### GaLore Layer-wise Hook 机制
-
-```python
-# models/galore_hook.py
-class GaLoreProjector:
-    def project(self, grad: torch.Tensor, step: int) -> torch.Tensor:
-        # 每 N 步用 SVD 计算投影矩阵
-        if step % self.update_proj_gap == 0:
-            U, _, _ = torch.linalg.svd(grad)
-            self.ortho_matrix = U[:, :rank]
-        
-        # 投影到低秩空间: G_low = U_r^T @ G
-        low_rank_grad = self.ortho_matrix.T @ grad
-        return low_rank_grad
-
-# 注册 backward hook
-def make_hook(param_name: str, proj: GaLoreProjector):
-    def hook(grad: torch.Tensor) -> torch.Tensor:
-        # ⚡ 核心：在 backward 时即刻投影
-        low_rank_grad = proj.project(grad, step)
-        return low_rank_grad  # 返回低秩梯度，原始梯度自动释放
-    return hook
-```
-
-**创新点**：在 `backward()` 完成时即刻投影并释放完整梯度，而不是等到 `optimizer.step()`。
-
-### 断点续训机制
-
-```python
-# utils/checkpoint.py
-# 完整保存：
-# - 模型权重 (safetensors)
-# - 优化器状态 (含 8-bit 状态)
-# - GaLore 投影矩阵 (ortho_matrix)
-# - 随机种子状态 (确保可复现)
-```
-
-## 🛠️ 工程特性
-
-- **一键切换优化器**：修改 `configs/galore_config.yaml` 中的 `optimizer.type`
-- **显存实时监控**：每 N 步输出 `torch.cuda.memory_reserved()` 和 loss
-- **自动断点续训**：支持从最近 checkpoint 恢复，包含完整训练状态
-- **模块化设计**：易于扩展新的显存优化技术
-
-## 📈 实验结论
-
-1. ✅ **目标达成**：在 4GB 显存下成功完成 Qwen2-0.5B 全参数微调
-2. ⚠️ **GaLore vs AdamW**：在 0.5B 模型上差异不明显，两者都可行
-3. 💡 **工程价值**：验证了 8-bit 量化 + Gradient Checkpointing 是 4GB 显存微调的底线方案
-4. 🔮 **未来方向**：GaLore 的真正优势在更大模型（1B+）上会显现
-
-## 📚 参考资料
-
-- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507)
-- [bitsandbytes: 8-bit Optimizers](https://github.com/TimDettmers/bitsandbytes)
-- [Qwen2-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2-0.5B-Instruct)
-
-## 📝 License
+## License
 
 MIT License

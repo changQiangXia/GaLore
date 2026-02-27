@@ -41,12 +41,24 @@ def load_model_and_tokenizer(config: Dict[str, Any]) -> Tuple[Any, Any]:
     
     # Configure 8-bit quantization
     quantization_config = None
+    has_fp16_weight = False
     if config["quantization"]["enabled"] and config["quantization"]["load_in_8bit"]:
+        has_fp16_weight = config["quantization"].get("llm_int8_has_fp16_weight", False)
+        if has_fp16_weight:
+            logger.warning(
+                "llm_int8_has_fp16_weight=True is experimental in this stack. "
+                "If you see a Linear8bitLt 'missing CB' crash, set it to False."
+            )
+        else:
+            logger.warning(
+                "llm_int8_has_fp16_weight is False: many 2D weights may be frozen under int8, "
+                "which can disable GaLore target hooks."
+            )
         logger.info("Enabling 8-bit quantization...")
         quantization_config = BitsAndBytesConfig(
             load_in_8bit=True,
             llm_int8_threshold=config["quantization"].get("llm_int8_threshold", 6.0),
-            llm_int8_has_fp16_weight=config["quantization"].get("llm_int8_has_fp16_weight", False),
+            llm_int8_has_fp16_weight=has_fp16_weight,
         )
     
     # Load model with optimizations
@@ -66,6 +78,28 @@ def load_model_and_tokenizer(config: Dict[str, Any]) -> Tuple[Any, Any]:
         model_name,
         **model_kwargs
     )
+
+    # Early compatibility check for the common int8 fp16-weight crash path.
+    if (
+        config["quantization"]["enabled"]
+        and config["quantization"]["load_in_8bit"]
+        and has_fp16_weight
+    ):
+        broken_linear_name = None
+        for module_name, module in model.named_modules():
+            if module.__class__.__name__ != "Linear8bitLt":
+                continue
+            weight = getattr(module, "weight", None)
+            if weight is None or not hasattr(weight, "CB"):
+                broken_linear_name = module_name
+                break
+
+        if broken_linear_name is not None:
+            raise RuntimeError(
+                "Detected incompatible int8 fp16-weight setup: "
+                f"`{broken_linear_name}.weight` has no `CB` attribute. "
+                "Set quantization.llm_int8_has_fp16_weight=false and retry."
+            )
     
     # Enable gradient checkpointing to save VRAM
     if config["memory"]["gradient_checkpointing"]:
