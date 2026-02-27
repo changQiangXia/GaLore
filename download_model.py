@@ -5,7 +5,8 @@ import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 model_name = "Qwen/Qwen2-0.5B-Instruct"
-local_dir = "./models_cache/Qwen2-0.5B-Instruct"
+# Keep path aligned with configs/*.yaml model.name
+local_dir = "./models_cache/qwen/Qwen2-0___5B-Instruct"
 
 print(f"开始下载模型: {model_name}")
 print(f"保存路径: {local_dir}")

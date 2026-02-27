@@ -129,8 +129,11 @@ Sophia&GaLore/
 ```bash
 conda create -n galore python=3.10 -y
 conda activate galore
+pip install --upgrade pip
 pip install -r requirements.txt
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
 ```
+> 说明：`requirements.txt` 已锁定 `CUDA 12.1` 的 GPU 版 PyTorch，避免默认安装到 CPU 版本。
 
 ### 2) 下载模型
 
@@ -139,6 +142,7 @@ python download_model.py
 # 或
 python download_model_modelscope.py
 ```
+> 说明：两种下载方式都会落到 `./models_cache/qwen/Qwen2-0___5B-Instruct`，与配置文件中的 `model.name` 一致。
 
 ### 3) 生成示例数据
 
@@ -150,6 +154,11 @@ python train.py --prepare-data
 
 ```bash
 python train.py --config configs/galore_config.fullrun.yaml
+```
+> 说明：`galore_config.fullrun.yaml` 是 True-GaLore（非 8-bit 量化）配置，显存占用更高，用于算法验证。  
+> 若希望先在小显存环境稳定复现，建议先跑：
+```bash
+python train.py --config configs/galore_config.yaml
 ```
 
 ## 常用命令
