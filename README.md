@@ -1,4 +1,4 @@
-# Sophia&GaLore
+# GaLore
 
 一个面向小显存环境的大模型微调项目，核心目标是在受限硬件下，系统验证 GaLore（Gradient Low-Rank Projection）在全参数训练中的可用性、稳定性和工程落地路径。
 
